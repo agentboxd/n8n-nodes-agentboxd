@@ -1,0 +1,10 @@
+{
+	"node": "n8n-nodes-agentboxd.agentboxdTrigger",
+	"nodeVersion": "1.0",
+	"codexVersion": "1.0",
+	"categories": ["Communication", "AI"],
+	"resources": {
+		"credentialDocumentation": [{ "url": "https://agentboxd.com/docs/quickstart" }],
+		"primaryDocumentation": [{ "url": "https://agentboxd.com/docs/webhooks" }]
+	}
+}
