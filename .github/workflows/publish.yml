@@ -5,17 +5,17 @@
 # requirement. Provenance lets anyone cryptographically verify that a package
 # was built by this exact workflow, from this exact repository and commit.
 #
-# ─── PREREQUISITES ─────────────────────────────────────────────────────────────
+# ─── HOW IT RUNS ───────────────────────────────────────────────────────────────
 #
-# @n8n/node-cli ≥ 0.23.0 is required. Earlier versions do not support the
-# provenance flag passed by `npm run release` in CI, and the publish step will
-# fail. Check the version installed in this project with:
+# 1. "build" installs dependencies (without their install scripts), lints,
+#    builds, tests and packs the package. It has read-only access and cannot
+#    mint an OIDC token.
+# 2. "publish" downloads that one tarball and publishes it with a provenance
+#    statement. It is the only job with `id-token: write`, and it installs and
+#    runs no project or dependency code.
 #
-#   npm list @n8n/node-cli
-#
-# To upgrade:
-#
-#   npm install --save-dev @n8n/node-cli@latest
+# Actions are pinned to full commit SHAs (the version is in the comment next
+# to each one); Dependabot keeps them up to date.
 #
 # ─── ONE-TIME SETUP ────────────────────────────────────────────────────────────
 #
@@ -63,32 +63,73 @@ on:
       # See "TAG CONVENTION" above if you prefer tags with a "v" prefix.
       - '*.*.*'
 
+# Read-only by default; only the publish job below adds the OIDC permission.
+permissions:
+  contents: read
+
 jobs:
+  build:
+    name: Lint, build, test and pack
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        # Dependencies' install scripts are not run; the build does not need them.
+        run: npm ci --ignore-scripts
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Run build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Pack
+        run: |
+          mkdir package
+          npm pack --ignore-scripts --pack-destination package
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package
+          path: package/*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
   publish:
     name: Publish to npm
+    needs: build
     runs-on: ubuntu-latest
 
     permissions:
-      # Required to mint an OIDC token for npm provenance attestation.
-      id-token: write
-      # Scoped down from the default (write) for least-privilege publishing.
       contents: read
+      # Required to mint an OIDC token for npm provenance (and trusted publishing).
+      id-token: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: package
+          path: package
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 'lts/*'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Release
-        # Publishes to npm with a provenance attestation (requires id-token: write above).
-        # Lint and build run automatically as part of the release process.
+      - name: Publish
+        # Publishes the tarball built above with a provenance attestation.
         #
         # Option A (OIDC): leave NPM_TOKEN unset — the token step is skipped and
         #   npm uses the OIDC exchange instead.
@@ -96,6 +137,6 @@ jobs:
         #   .npmrc here before publishing.
         run: |
           [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm run release
+          npm publish package/*.tgz --provenance --ignore-scripts
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

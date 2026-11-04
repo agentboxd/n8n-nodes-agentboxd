@@ -12,6 +12,7 @@ import {
 	type JsonObject,
 	type IWebhookResponseData,
 } from 'n8n-workflow';
+import { pathSegment } from '../Agentboxd/GenericFunctions';
 
 /** Deliveries older or newer than this are refused, so a captured request can't be replayed later. */
 const TOLERANCE_SECONDS = 300;
@@ -103,8 +104,9 @@ export class AgentboxdTrigger implements INodeType {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
 				const data = this.getWorkflowStaticData('node');
 				if (!data.webhookId) return false;
+				const path = `/v1/webhooks/${pathSegment(this.getNode(), 'webhookId', data.webhookId)}`;
 				try {
-					await api.call(this, 'GET', `/v1/webhooks/${String(data.webhookId)}`);
+					await api.call(this, 'GET', path);
 					return true;
 				} catch (error) {
 					if (!isNotFound(error)) throw new NodeApiError(this.getNode(), error as JsonObject);
@@ -136,8 +138,9 @@ export class AgentboxdTrigger implements INodeType {
 			async delete(this: IHookFunctions): Promise<boolean> {
 				const data = this.getWorkflowStaticData('node');
 				if (data.webhookId) {
+					const path = `/v1/webhooks/${pathSegment(this.getNode(), 'webhookId', data.webhookId)}`;
 					try {
-						await api.call(this, 'DELETE', `/v1/webhooks/${String(data.webhookId)}`);
+						await api.call(this, 'DELETE', path);
 					} catch (error) {
 						// Already deleted (in the dashboard, say) is fine; any other failure must surface.
 						if (!isNotFound(error)) throw new NodeApiError(this.getNode(), error as JsonObject);
