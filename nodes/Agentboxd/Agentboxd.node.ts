@@ -1,4 +1,5 @@
 import { NodeConnectionTypes, type INodeProperties, type INodeType, type INodeTypeDescription } from 'n8n-workflow';
+import { encodePathParameters, waitForCode } from './GenericFunctions';
 
 /** "a@x.com, b@y.com" → ["a@x.com", "b@y.com"] (the API takes a string or a list). */
 const RECIPIENTS = '={{ $value.split(",").map((s) => s.trim()).filter(Boolean) }}';
@@ -6,6 +7,9 @@ const RECIPIENTS = '={{ $value.split(",").map((s) => s.trim()).filter(Boolean) }
 const unlessEmpty = (property: string) => ({ send: { type: 'body' as const, property, value: '={{ $value === "" ? undefined : $value }}' } });
 
 const show = (resource: string, operation: string[]) => ({ show: { resource: [resource], operation } });
+
+/** For a URL with IDs in it, e.g. '/v1/inboxes/{inboxId}': each `{name}` is filled with the encoded parameter. */
+const ENCODE_PATH = { preSend: [encodePathParameters] };
 
 const inboxId = (resource: string, operation: string[], description = 'ID of the inbox (inbox.id)'): INodeProperties => ({
 	displayName: 'Inbox ID',
@@ -50,14 +54,14 @@ const inboxOperations: INodeProperties = {
 			value: 'delete',
 			description: 'Delete an inbox and its mail',
 			action: 'Delete an inbox',
-			routing: { request: { method: 'DELETE', url: '=/v1/inboxes/{{$parameter.inboxId}}' } },
+			routing: { request: { method: 'DELETE', url: '/v1/inboxes/{inboxId}' }, send: ENCODE_PATH },
 		},
 		{
 			name: 'Get',
 			value: 'get',
 			description: 'Get an inbox',
 			action: 'Get an inbox',
-			routing: { request: { method: 'GET', url: '=/v1/inboxes/{{$parameter.inboxId}}' } },
+			routing: { request: { method: 'GET', url: '/v1/inboxes/{inboxId}' }, send: ENCODE_PATH },
 		},
 		{
 			name: 'Get Many',
@@ -127,7 +131,7 @@ const messageOperations: INodeProperties = {
 			value: 'get',
 			description: 'Get a message with its labels and AI scores',
 			action: 'Get a message',
-			routing: { request: { method: 'GET', url: '=/v1/messages/{{$parameter.messageId}}' } },
+			routing: { request: { method: 'GET', url: '/v1/messages/{messageId}' }, send: ENCODE_PATH },
 		},
 		{
 			name: 'Get Many',
@@ -135,7 +139,8 @@ const messageOperations: INodeProperties = {
 			description: 'List an inbox’s messages, newest first',
 			action: 'Get many messages',
 			routing: {
-				request: { method: 'GET', url: '=/v1/inboxes/{{$parameter.inboxId}}/messages' },
+				request: { method: 'GET', url: '/v1/inboxes/{inboxId}/messages' },
+				send: ENCODE_PATH,
 				output: { postReceive: [{ type: 'rootProperty', properties: { property: 'data' } }] },
 			},
 		},
@@ -144,21 +149,21 @@ const messageOperations: INodeProperties = {
 			value: 'reply',
 			description: 'Reply in the same thread',
 			action: 'Reply to a message',
-			routing: { request: { method: 'POST', url: '=/v1/inboxes/{{$parameter.inboxId}}/messages/{{$parameter.messageId}}/reply' } },
+			routing: { request: { method: 'POST', url: '/v1/inboxes/{inboxId}/messages/{messageId}/reply' }, send: ENCODE_PATH },
 		},
 		{
 			name: 'Send',
 			value: 'send',
 			description: 'Send an email from an inbox',
 			action: 'Send a message',
-			routing: { request: { method: 'POST', url: '=/v1/inboxes/{{$parameter.inboxId}}/messages/send' } },
+			routing: { request: { method: 'POST', url: '/v1/inboxes/{inboxId}/messages/send' }, send: ENCODE_PATH },
 		},
 		{
 			name: 'Wait for Next',
 			value: 'wait',
 			description: 'Wait up to 60 seconds for the next email to arrive',
 			action: 'Wait for the next message',
-			routing: { request: { method: 'GET', url: '=/v1/inboxes/{{$parameter.inboxId}}/messages/wait' } },
+			routing: { request: { method: 'GET', url: '/v1/inboxes/{inboxId}/messages/wait' }, send: ENCODE_PATH },
 		},
 	],
 };
@@ -278,7 +283,7 @@ const messageFields: INodeProperties[] = [
 				name: 'from',
 				type: 'string',
 				default: '',
-				description: 'Wait for Next only: part of the sender address',
+				description: 'Wait for Next only: text the From header contains, display name included. It does not prove who sent the email: check the labels.',
 				routing: { send: { type: 'query', property: 'from', value: '={{ $value === "" ? undefined : $value }}' } },
 			},
 			{
@@ -341,9 +346,15 @@ const verificationOperations: INodeProperties = {
 		{
 			name: 'Wait for Code',
 			value: 'wait',
-			description: 'Wait for the next sign-up code or magic link and return it (data is null on timeout)',
+			description:
+				'Wait for the next sign-up code or magic link and return it with the email’s labels, and a warning when it failed sender checks or was flagged (data is null on timeout)',
 			action: 'Wait for a verification code',
-			routing: { request: { method: 'GET', url: '=/v1/inboxes/{{$parameter.inboxId}}/verification' } },
+			routing: {
+				request: { method: 'GET', url: '/v1/inboxes/{inboxId}/verification' },
+				// Checking the sender and adding the labels takes more than one request (see waitForCode).
+				send: { ...ENCODE_PATH, paginate: true },
+				operations: { pagination: waitForCode },
+			},
 		},
 	],
 };
@@ -359,12 +370,13 @@ const verificationFields: INodeProperties[] = [
 		displayOptions: show('verification', ['wait']),
 		options: [
 			{
-				displayName: 'From Contains',
+				displayName: 'From',
 				name: 'from',
 				type: 'string',
 				default: '',
 				placeholder: 'github.com',
-				routing: { send: { type: 'query', property: 'from', value: '={{ $value === "" ? undefined : $value }}' } },
+				description:
+					'Only codes from this sender: a full address (noreply@github.com) or a domain (github.com, which also matches its subdomains). Checked against the sender’s address, never the display name.',
 			},
 			{
 				displayName: 'Since',
@@ -402,7 +414,7 @@ const draftOperations: INodeProperties = {
 			value: 'create',
 			description: 'Save an email for a person to approve and send from the dashboard',
 			action: 'Create a draft',
-			routing: { request: { method: 'POST', url: '=/v1/inboxes/{{$parameter.inboxId}}/drafts' } },
+			routing: { request: { method: 'POST', url: '/v1/inboxes/{inboxId}/drafts' }, send: ENCODE_PATH },
 		},
 	],
 };

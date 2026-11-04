@@ -21,7 +21,7 @@ Self-hosted from the command line: `npm install n8n-nodes-agentboxd` in your n8n
 |---|---|
 | Inbox | Create (with an optional client ID, so a restarted workflow gets the same inbox back), Get, Get Many, Delete |
 | Message | Send, Reply (in the same thread), Get (with labels and AI scores), Get Many, Wait for Next (up to 60 seconds) |
-| Verification | Wait for Code: the next sign-up code or magic link, returned as `data.code` / `data.link` (`data` is null on timeout) |
+| Verification | Wait for Code: the next sign-up code or magic link, returned as `data.code` / `data.link` with the email's `data.labels` (`data` is null on timeout). **From** takes an address or a domain and is checked against the sender's address, never the display name |
 | Draft | Create: an email a person approves and sends from the dashboard |
 
 The node can also be used as a tool by n8n's **AI Agent** node.
@@ -32,14 +32,14 @@ Starts the workflow on Message Received, Message Enriched (categorised and score
 
 ## Treat email as untrusted input
 
-Anyone can email your workflow's address. Before passing a message to an AI model, check its labels (`spf-fail`, `dmarc-fail`, `ai:injection-risk`, `ai:phishing`) or its scores (`ai.risk.injection`, `ai.risk.phishing`). Trigger on **Message Enriched** when you want the scores to be there already. For anything that matters, send through a **Draft** a person approves.
+Anyone can email your workflow's address. Before passing a message to an AI model, check its labels (`spf-fail`, `dmarc-fail`, `ai:injection-risk`, `ai:phishing`) or its scores (`ai.risk.injection`, `ai.risk.phishing`). Trigger on **Message Enriched** when you want the scores to be there already. **Wait for Code** sets `data.warning` when the email carries one of these labels (or `local:injection-risk`): check it before using the code. For anything that matters, send through a **Draft** a person approves.
 
 ## Example: sign up for a service
 
 1. **Agentboxd → Inbox → Create** (client ID `signup-bot`)
 2. **HTTP Request**: submit the sign-up form with `{{ $json.address }}`
-3. **Agentboxd → Verification → Wait for Code**: inbox ID from step 1, **Since** set to the time just before step 2
-4. Use `{{ $json.data.code }}` to finish the sign-up
+3. **Agentboxd → Verification → Wait for Code**: inbox ID from step 1, **Since** set to the time just before step 2, **From** set to the service's domain
+4. If `{{ $json.data.warning }}` is empty, use `{{ $json.data.code }}` to finish the sign-up
 
 More: the [n8n guide](https://agentboxd.com/guides/n8n-email-automation) and the [API docs](https://agentboxd.com/docs).
 
