@@ -1,6 +1,6 @@
 {
 	"name": "n8n-nodes-agentboxd",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Agentboxd for n8n: real email inboxes for AI agents. Create inboxes, send and reply, wait for sign-up codes, and trigger workflows when mail arrives.",
 	"license": "MIT",
 	"homepage": "https://agentboxd.com/guides/n8n-email-automation",
