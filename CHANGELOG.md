@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (2026-11-07)
+
+First release on npm. The 0.1.0 code (26 Sep) was never published there.
 
 - IDs in request URLs are percent-encoded, and an empty ID, `.` or `..` is refused with an error instead of being sent.
 - Wait for Code returns the email's labels, and `data.warning` when it failed sender checks (`spf-fail`, `dmarc-fail`) or was flagged (`ai:phishing`, `ai:injection-risk`, `local:injection-risk`).
