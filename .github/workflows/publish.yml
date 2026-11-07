@@ -138,6 +138,7 @@ jobs:
         run: |
           [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
           # "./" matters: without it npm reads package/<file>.tgz as a GitHub repo and tries git.
-          npm publish ./package/*.tgz --provenance --ignore-scripts
+          # --access public: npm refuses provenance for a new package unless access is set explicitly.
+          npm publish ./package/*.tgz --provenance --access public --ignore-scripts
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
