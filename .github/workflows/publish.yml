@@ -137,6 +137,7 @@ jobs:
         #   .npmrc here before publishing.
         run: |
           [ -n "$NPM_TOKEN" ] && npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm publish package/*.tgz --provenance --ignore-scripts
+          # "./" matters: without it npm reads package/<file>.tgz as a GitHub repo and tries git.
+          npm publish ./package/*.tgz --provenance --ignore-scripts
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
